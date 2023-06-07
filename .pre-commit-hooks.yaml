@@ -1,0 +1,5 @@
+- id: lint-codeblock-json
+  name: lint-codeblock-json
+  description: Lint JSON codeblocks within a Markdown file
+  entry: lint-codeblock-json
+  language: python
