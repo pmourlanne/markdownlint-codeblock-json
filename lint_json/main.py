@@ -12,7 +12,68 @@ def is_markdown_file(filename):
     return Path(filename).suffix == ".md"
 
 
-def find_json_codeblocks(filename):
+def remove_comments(line):
+    stripped_line = line.strip()
+
+    if stripped_line.startswith('...'):
+        return None
+
+    inside_quotes = False
+    found_comment = False
+    for character_idx, character in enumerate(line):
+        if character == '"':
+            inside_quotes = not inside_quotes
+            continue
+
+        if character == "#" and not inside_quotes:
+            found_comment = True
+            break
+
+    if found_comment:
+        return f"{line[:character_idx]}\n"
+
+    return line
+
+
+def find_json_codeblocks(filename, *, allow_comments=False):
+    """
+    When the `allow_comments` flag is true, we do two things:
+        - We ignore lines starting with `...`
+        - We ignore everything after a `#` that is not between double quotes
+
+    For example, the following JSON:
+    ```
+        {
+            "count": 95,  # Total number of orders
+            "next": "http://api-sandbox.hokodo.co/v1/payment/orders/?limit=10&offset=60#heading",
+            "previous": null,
+            "results": [
+                {
+                    ... # 51st order in the list
+                },
+                {
+                    ... # 52nd order in the list
+                }
+                ...
+            ]
+        }
+    ```
+    will be transformed into:
+    ```
+        {
+            "count": 95,
+            "next": "http://api-sandbox.hokodo.co/v1/payment/orders/?limit=10&offset=60#heading",
+            "previous": null,
+            "results": [
+                {
+                },
+                {
+                }
+            ]
+        }
+    ```
+    """
+
     with open(filename) as f:
         lines = f.readlines()
 
@@ -41,6 +102,11 @@ def find_json_codeblocks(filename):
             continue
 
         if within_codeblock:
+            if allow_comments:
+                line = remove_comments(line)
+                if line is None:
+                    continue
+
             current_codeblock_string.append(line)
 
     return codeblock_strings
@@ -56,13 +122,14 @@ def parse_json_codeblock(codeblock_string):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("filenames", nargs="*")
+    parser.add_argument("--allow-comments", action="store_true")
     args = parser.parse_args()
 
     exit_code = 0
 
     for filename in args.filenames:
         if is_markdown_file(filename):
-            json_codeblocks = find_json_codeblocks(filename)
+            json_codeblocks = find_json_codeblocks(filename, allow_comments=args.allow_comments)
 
             for line_idx, json_codeblock in json_codeblocks:
                 if error := parse_json_codeblock(json_codeblock):
